@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C++ Compiler Phase Visualizer</title>
+<style>
+  :root { --bg:#1e1e1e; --panel:#252526; --head:#2d2d30; --fg:#d4d4d4; --blue:#1976D2; --green:#388E3C; --red:#D32F2F; --warn:#ffcc00; --ok:#44ff44; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family: "Segoe UI", system-ui, sans-serif; }
+  header { background:var(--head); text-align:center; padding:14px 10px; }
+  header h1 { margin:0; color:#61dafb; font-size:26px; }
+  header p { margin:6px 0 0; font-size:13px; color:#ccc; }
+  main { display:flex; gap:12px; padding:12px; flex-wrap:wrap; }
+  .left { flex:1 1 340px; background:var(--panel); padding:10px; border-radius:6px; }
+  .right { flex:3 1 560px; background:var(--panel); padding:10px; border-radius:6px; min-width:0; }
+  .label { background:var(--blue); color:#fff; font-weight:bold; text-align:center; padding:6px; margin-bottom:6px; }
+  textarea { width:100%; height:420px; background:var(--bg); color:var(--fg); border:0; padding:8px;
+             font-family: Consolas, monospace; font-size:13px; resize:vertical; tab-size:4; }
+  button { border:0; color:#fff; cursor:pointer; padding:8px 12px; font-size:13px; border-radius:3px; }
+  .examples { display:flex; gap:4px; margin-top:8px; }
+  .examples button { flex:1; }
+  .ex-ok { background:var(--green); } .ex-err { background:var(--red); }
+  .controls { margin-top:10px; display:flex; gap:8px; }
+  #compile { background:var(--red); font-weight:bold; font-size:15px; padding:10px 18px; }
+  #clear { background:#555; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .tabs { display:flex; flex-wrap:wrap; gap:2px; margin-bottom:8px; }
+  .tab { background:#333; padding:8px 12px; font-weight:bold; }
+  .tab.active { background:var(--blue); }
+  .pane { display:none; background:var(--bg); padding:8px; height:470px; overflow:auto; }
+  .pane.active { display:block; }
+  pre { margin:0; font-family: Consolas, monospace; font-size:13px; white-space:pre; }
+  table { border-collapse:collapse; width:100%; font-family: Consolas, monospace; font-size:13px; }
+  th { text-align:left; background:#333; color:#fff; padding:4px 8px; position:sticky; top:0; }
+  td { padding:2px 8px; border-bottom:1px solid #2a2a2a; }
+  .KEYWORD{color:#569CD6} .IDENTIFIER{color:#9CDCFE} .NUMBER{color:#B5CEA8} .OPERATOR{color:#FF7B72}
+  .PUNCTUATION{color:#6A9955} .STRING,.CHAR{color:#CE9178}
+  .tree ul { list-style:none; margin:0; padding-left:18px; border-left:1px solid #3a3a3a; }
+  .tree > ul { border-left:0; padding-left:0; }
+  .tree li { font-family: Consolas, monospace; font-size:13px; padding:1px 0; }
+  .tree .ln { color:#888; margin-left:8px; }
+  .split { display:flex; gap:8px; } .split > div { flex:1; min-width:0; overflow:auto; }
+  .removed { background:#5a1d1d; display:block; } .added { background:#1d4d2a; display:block; }
+  .info { color:var(--warn); font-weight:bold; font-size:13px; margin-bottom:6px; }
+  #problems { background:var(--bg); margin:0 12px; padding:8px; min-height:60px; max-height:140px; overflow:auto;
+              font-family: Consolas, monospace; font-size:12px; }
+  .e { color:#ff6b6b; } .w { color:var(--warn); }
+  #status { padding:8px 12px; font-size:12px; color:#888; }
+  footer { padding:6px 12px 16px; font-size:12px; color:#888; }
+  a { color:#61dafb; }
+</style>
+</head>
+<body>
+<header>
+  <h1>C++ Compiler Phase Visualizer</h1>
+  <p>Source → Tokens → AST → Symbol Table → Three-Address Code → Optimizer → C++ / Assembly</p>
+</header>
+
+<main>
+  <section class="left">
+    <div class="label">INPUT C++ CODE</div>
+    <textarea id="src" spellcheck="false"></textarea>
+    <div class="examples" id="examples"></div>
+    <div class="controls">
+      <button id="compile" disabled>▶ COMPILE &amp; SHOW ALL PHASES</button>
+      <button id="clear">CLEAR</button>
+    </div>
+  </section>
+
+  <section class="right">
+    <div class="tabs" id="tabs"></div>
+    <div class="pane" id="p-lex"></div>
+    <div class="pane" id="p-ast"></div>
+    <div class="pane" id="p-sem"></div>
+    <div class="pane" id="p-tac"></div>
+    <div class="pane" id="p-opt"></div>
+    <div class="pane" id="p-final"></div>
+    <div class="pane" id="p-asm"></div>
+  </section>
+</main>
+
+<div id="problems"></div>
+<div id="status">Loading Python in your browser (first load takes a few seconds)...</div>
+<footer>
+  Runs fully in your browser using Pyodide. Compiles a small C++ subset only (one <code>main()</code>, no functions, no <code>for</code>).
+  <a href="https://github.com/laibaghalib/cpp-compiler-visualizer">Source on GitHub</a>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+const EXAMPLES = {
+'Loop': `int main() {
+    int n = 5;
+    int sum = 0;
+    int i = 1;
+    while (i <= n) {
+        sum = sum + i;
+        i++;
+    }
+    if (sum > 10) {
+        sum = sum * 2;
+    } else {
+        sum = 0;
+    }
+    return sum;
+}`,
+'Folding': `int main() {
+    // everything here is known at compile time
+    int a = 10;
+    int b = 5;
+    int sum = a + b;
+    int product = a * b;
+    int result = (a + b) * 2 - product;
+    return result;
+}`,
+'CSE': `int main() {
+    int a = 7;
+    int b = 3;
+    while (a > 0) {
+        b = b + 1;
+        a = a - 1;
+    }
+    int x = a * b + 4;
+    int y = a * b + 9;
+    return x + y;
+}`,
+'Error 1': `int main() {
+    int x = 5
+    int y = (x + 2;
+    return y;
+}`,
+'Error 2': `#include <iostream>
+/* multi-line
+   comment */
+int main() {
+    int a = 4;
+    int a = 5;
+    float f = 2.5;
+    int b = f * a;
+    return c / 0;
+}`
+};
+
+const FILES = ['__init__','common','lexer','parser','semantic','tac','optimizer','codegen','pipeline'];
+
+const BRIDGE = `
+import json
+from cppc import CppCompiler
+
+def _ast(n):
+    return {'t': n.node_type, 'v': n.value, 'l': n.line, 'c': [_ast(c) for c in n.children]}
+
+def run(src):
+    r = CppCompiler().compile(src)
+    out = {
+        'tokens': [[t.line, t.column, t.type, t.value] for t in r['tokens']],
+        'ast': _ast(r['ast']) if 'ast' in r else None,
+        'symbols': [[label, depth, {k: [v['type'], v['line'], bool(v['initialized'])] for k, v in scope.items()}]
+                    for label, depth, scope in r.get('symbol_table', [])],
+        'tac': r.get('intermediate_code'),
+        'opt': r.get('optimized_code'),
+        'stats': r.get('opt_stats', {}),
+        'final': r.get('final_code'),
+        'asm': r.get('assembly'),
+        'errors': list(r.get('lexical_errors', [])) + list(r.get('parse_errors', [])) + list(r.get('semantic_errors', [])),
+        'warnings': list(r.get('warnings', [])),
+    }
+    return json.dumps(out, default=str)
+`;
+
+const $ = id => document.getElementById(id);
+const TABS = [['p-lex','1 Lexical'],['p-ast','2 Syntax (AST)'],['p-sem','3 Semantic'],['p-tac','4 Intermediate'],
+              ['p-opt','5 Optimization'],['p-final','6 Final C++'],['p-asm','7 Assembly']];
+let pyRun = null;
+
+function esc(s) { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+// tabs
+TABS.forEach(([id, title], i) => {
+  const b = document.createElement('button');
+  b.className = 'tab' + (i === 0 ? ' active' : '');
+  b.textContent = title;
+  b.onclick = () => showTab(id);
+  b.dataset.id = id;
+  $('tabs').appendChild(b);
+});
+$('p-lex').classList.add('active');
+function showTab(id) {
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === id));
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.id === id));
+}
+
+// examples
+Object.keys(EXAMPLES).forEach(name => {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.className = name.startsWith('Error') ? 'ex-err' : 'ex-ok';
+  b.onclick = () => { $('src').value = EXAMPLES[name]; compile(); };
+  $('examples').appendChild(b);
+});
+
+function renderAst(n) {
+  return '<li>' + esc(n.t + (n.v ? ': ' + n.v : '')) + (n.l ? '<span class="ln">line ' + n.l + '</span>' : '') +
+         (n.c.length ? '<ul>' + n.c.map(renderAst).join('') + '</ul>' : '') + '</li>';
+}
+
+function clearAll() {
+  TABS.forEach(([id]) => $(id).innerHTML = '');
+  $('problems').innerHTML = '';
+}
+
+function compile() {
+  if (!pyRun) return;
+  const src = $('src').value;
+  clearAll();
+  if (!src.trim()) { $('status').textContent = 'Please enter some C++ code.'; return; }
+
+  let r;
+  try { r = JSON.parse(pyRun(src)); }
+  catch (e) { $('status').textContent = 'Internal compiler error: ' + e.message.split('\n').slice(-2).join(' '); return; }
+
+  $('p-lex').innerHTML = '<table><tr><th>Line</th><th>Col</th><th>Type</th><th>Value</th></tr>' +
+    r.tokens.map(t => `<tr class="${esc(t[2])}"><td>${t[0]}</td><td>${t[1]}</td><td>${esc(t[2])}</td><td>${esc(t[3])}</td></tr>`).join('') + '</table>';
+
+  if (r.ast) $('p-ast').innerHTML = '<div class="tree"><ul>' + renderAst(r.ast) + '</ul></div>';
+
+  $('p-sem').innerHTML = r.symbols.map(([label, depth, scope]) =>
+    `<div class="info">Scope ${depth}: ${esc(label)}</div><table><tr><th>Name</th><th>Type</th><th>Declared at</th><th>Initialized</th></tr>` +
+    Object.entries(scope).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v[0])}</td><td>line ${v[1]}</td><td>${v[2] ? '✓' : '✗'}</td></tr>`).join('') +
+    '</table><br>').join('');
+
+  if (r.tac) {
+    $('p-tac').innerHTML = '<pre>' + esc(r.tac.map((l, n) => String(n).padStart(3) + ': ' + l).join('\n')) + '</pre>';
+    const before = new Set(r.tac), after = new Set(r.opt);
+    const side = (arr, other, cls) => '<pre>' + arr.map(l => other.has(l) ? esc(l) : `<span class="${cls}">${esc(l)}</span>`).join('') + '</pre>';
+    const lines = (arr, other, cls) => arr.map(l => other.has(l) ? `<span style="display:block">${esc(l)}</span>` : `<span class="${cls}">${esc(l)}</span>`).join('');
+    const s = r.stats;
+    $('p-opt').innerHTML =
+      `<div class="info">${r.tac.length} → ${r.opt.length} instructions | folded: ${s.folded||0} propagated: ${s.propagated||0} CSE: ${s.cse||0} fused: ${s.fused||0} dead removed: ${s.dead_removed||0} branches simplified: ${s.branches||0}</div>` +
+      `<div class="split"><div><b>BEFORE</b><pre>${lines(r.tac, after, 'removed')}</pre></div><div><b>AFTER</b><pre>${lines(r.opt, before, 'added')}</pre></div></div>`;
+    $('p-final').innerHTML = '<pre>' + esc(r.final || '') + '</pre>';
+    $('p-asm').innerHTML = '<pre>' + esc(r.asm || '') + '</pre>';
+  }
+
+  $('problems').innerHTML =
+    r.errors.map(m => `<div class="e">error: ${esc(m)}</div>`).join('') +
+    r.warnings.map(m => `<div class="w">warning: ${esc(m)}</div>`).join('');
+
+  const st = $('status');
+  if (r.errors.length) { st.textContent = `Compilation stopped: ${r.errors.length} error(s)`; st.style.color = '#D32F2F'; }
+  else { st.textContent = 'Compilation successful' + (r.warnings.length ? ` (${r.warnings.length} warning(s))` : ''); st.style.color = '#44ff44'; }
+}
+
+$('compile').onclick = compile;
+$('clear').onclick = () => { clearAll(); $('status').textContent = 'Cleared'; $('status').style.color = '#888'; };
+
+// Ctrl+Enter to compile, Tab inserts spaces
+$('src').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); compile(); }
+  if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertText', false, '    '); }
+});
+
+async function boot() {
+  try {
+    const py = await loadPyodide();
+    py.FS.mkdir('cppc');
+    for (const f of FILES) {
+      const res = await fetch(`cppc/${f}.py`);
+      if (!res.ok) throw new Error(`Could not load cppc/${f}.py (HTTP ${res.status})`);
+      py.FS.writeFile(`cppc/${f}.py`, await res.text());
+    }
+    py.runPython(BRIDGE);
+    pyRun = py.globals.get('run');
+    $('compile').disabled = false;
+    $('src').value = EXAMPLES['Loop'];
+    $('status').textContent = 'Ready';
+    compile();
+  } catch (e) {
+    $('status').textContent = 'Failed to start: ' + e.message;
+    $('status').style.color = '#D32F2F';
+  }
+}
+boot();
+</script>
+</body>
+</html>

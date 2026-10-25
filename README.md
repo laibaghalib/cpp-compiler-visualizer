@@ -1,6 +1,10 @@
 # C++ Compiler Phase Visualizer
 
-Educational compiler for a C++ subset, written in Python, with a Tkinter GUI that shows every phase.
+**Live demo:** https://laibaghalib.github.io/cpp-compiler-visualizer/
+
+> Note: this compiles a small C++ subset only (one `main()`, no functions, no `for` loops, no arrays or pointers). It is a learning tool, not a full C++ compiler.
+
+Educational compiler for a C++ subset, written in Python, with a Tkinter GUI (desktop) and a browser version (Pyodide) that show every phase.
 
 ```
 Source -> Lexer -> Parser (AST) -> Semantic (symbol table) -> Three-Address Code -> Optimizer -> C++ / Assembly
@@ -23,7 +27,9 @@ python -m unittest discover -s tests -v
 | `cppc/optimizer.py` | folding, propagation, CSE, dead code elimination |
 | `cppc/codegen.py` | C++ and pseudo-assembly output |
 | `cppc/pipeline.py` | connects all phases |
-| `gui.py` | Tkinter visualizer |
+| `gui.py` | Tkinter visualizer (desktop) |
+| `index.html` | browser visualizer, runs the same `cppc/` code with Pyodide |
+| `.nojekyll` | lets GitHub Pages serve `cppc/__init__.py` |
 
 ## Supported subset
 One `int main()`, `int/float/double/bool`, arithmetic/comparison/logical operators,

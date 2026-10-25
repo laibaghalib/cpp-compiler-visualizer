@@ -46,7 +46,7 @@
   #problems { background:var(--bg); margin:0 12px; padding:8px; min-height:60px; max-height:140px; overflow:auto;
               font-family: Consolas, monospace; font-size:12px; }
   .e { color:#ff6b6b; } .w { color:var(--warn); }
-  #status { padding:8px 12px; font-size:12px; color:#888; }
+  #status { padding:10px 12px; font-size:14px; font-weight:bold; color:#ffcc00; background:#2a2a2a; white-space:pre-wrap; word-break:break-word; }
   footer { padding:6px 12px 16px; font-size:12px; color:#888; }
   a { color:#61dafb; }
 </style>
@@ -56,6 +56,7 @@
   <h1>C++ Compiler Phase Visualizer</h1>
   <p>Source → Tokens → AST → Symbol Table → Three-Address Code → Optimizer → C++ / Assembly</p>
 </header>
+<div id="status">Loading Python in your browser (first load takes a few seconds)...</div>
 
 <main>
   <section class="left">
@@ -81,7 +82,6 @@
 </main>
 
 <div id="problems"></div>
-<div id="status">Loading Python in your browser (first load takes a few seconds)...</div>
 <footer>
   Runs fully in your browser using Pyodide. Compiles a small C++ subset only (one <code>main()</code>, no functions, no <code>for</code>).
   <a href="https://github.com/laibaghalib/cpp-compiler-visualizer">Source on GitHub</a>
@@ -277,11 +277,20 @@ async function boot() {
     $('status').textContent = 'Ready';
     compile();
   } catch (e) {
-    $('status').textContent = 'Failed to start: ' + e.message;
-    $('status').style.color = '#D32F2F';
+    $('status').textContent = 'Failed to start: ' + (e && e.message ? e.message : e);
+    $('status').style.color = '#ff6b6b';
+    console.error(e);
   }
 }
-boot();
+window.addEventListener('error', ev => { $('status').textContent = 'Page error: ' + ev.message; $('status').style.color = '#ff6b6b'; });
+window.addEventListener('unhandledrejection', ev => { $('status').textContent = 'Page error: ' + (ev.reason && ev.reason.message ? ev.reason.message : ev.reason); $('status').style.color = '#ff6b6b'; });
+if (typeof loadPyodide === 'undefined') {
+  $('status').textContent = 'Failed to start: the Pyodide script did not load from cdn.jsdelivr.net (blocked or offline).';
+  $('status').style.color = '#ff6b6b';
+} else {
+  $('src').value = EXAMPLES['Loop'];
+  boot();
+}
 </script>
 </body>
 </html>
